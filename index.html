@@ -90,6 +90,27 @@ details.memo summary{cursor:pointer; color:var(--sub)}
 #navbtns button{flex:1; padding:.6rem; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--fg); font-size:.9rem; cursor:pointer}
 #navbtns button:disabled{opacity:.35}
 
+/* ---- review ---- */
+#reviewbox{
+  margin:1.2rem 0 1rem; border:1px solid var(--line); border-radius:12px;
+  background:var(--card); padding:.8rem .9rem; font-family:sans-serif;
+}
+#reviewbox .rvtitle{font-size:.8rem; color:var(--sub); margin-bottom:.5rem}
+#verdicts{display:flex; gap:.45rem; margin-bottom:.6rem}
+.vchip{
+  flex:1; text-align:center; padding:.35rem 0; border-radius:9px; cursor:pointer;
+  border:1px solid var(--line); background:var(--bg); color:var(--sub);
+  font-size:.95rem; user-select:none;
+}
+.vchip.on{color:var(--accent); border-color:var(--accent); font-weight:600}
+#memoarea{
+  width:100%; min-height:4.5rem; resize:vertical; border:1px solid var(--line);
+  border-radius:9px; background:var(--bg); color:var(--fg); padding:.5rem .6rem;
+  font-size:.92rem; font-family:sans-serif; line-height:1.6;
+}
+#savedmark{font-size:.72rem; color:var(--sub); text-align:right; min-height:1em; margin-top:.2rem}
+.mark{color:var(--accent); font-family:sans-serif; font-size:.9em; margin-right:.15rem}
+
 footer{
   text-align:center; color:var(--sub); font-size:.72rem; font-family:sans-serif;
   padding:1rem 0 2rem;
@@ -103,6 +124,7 @@ footer{
   <button id="fontminus" title="文字を小さく">A−</button>
   <button id="fontplus" title="文字を大きく">A＋</button>
   <button id="importbtn" title="バンドル読み込み">読込</button>
+  <button id="exportbtn" title="レビュー書き出し">書出</button>
 </header>
 <input type="file" id="filein" accept=".json,application/json" class="hidden">
 
@@ -149,6 +171,7 @@ let bundle = null;      // {format, exported_at, talks:[...]}
 let filtered = [];      // current list order (indices into bundle.talks)
 let genreSel = "";      // selected genre chip
 let current = -1;       // index in filtered[] for reader
+let reviews = {};       // {file: {id,title,verdict,memo,updated_at}} 端末内のみ
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -203,8 +226,10 @@ function applyFilter(){
   $("count").textContent = `${filtered.length} 卓`;
   $("cards").innerHTML = filtered.map(i=>{
     const t = bundle.talks[i];
+    const r = reviews[t.file];
+    const mark = r ? `<span class="mark">${esc(r.verdict || "✎")}</span>` : "";
     return `<div class="card" data-i="${i}">
-      <h2>${esc(t.title||t.file)}</h2>
+      <h2>${mark}${esc(t.title||t.file)}</h2>
       <div class="meta">
         <span>${esc((t.cast||[]).join("・"))}</span>
         ${t.genre?`<span>${esc(t.genre)}</span>`:""}
@@ -221,6 +246,8 @@ function renderList(){
   $("reader").classList.add("hidden");
   $("backbtn").classList.add("hidden");
   $("list").classList.remove("hidden");
+  $("importbtn").classList.remove("hidden");
+  $("exportbtn").classList.remove("hidden");
   $("apptitle").textContent = "卓リーダー";
   const gs = talkGenres();
   $("genres").innerHTML = gs.map(([g,n])=>
@@ -268,6 +295,27 @@ function renderBody(md){
   }
   return html;
 }
+const VERDICTS = ["◎","○","△","✕"];
+let memoTimer = null;
+async function saveReview(t){
+  const verdict = document.querySelector(".vchip.on")?.dataset.v || "";
+  const memo = $("memoarea").value.trim();
+  if(!verdict && !memo){ delete reviews[t.file]; }
+  else reviews[t.file] = {id:t.id||"", title:t.title||"", verdict, memo,
+                          updated_at:new Date().toISOString()};
+  await DB.set("reviews", reviews);
+  $("savedmark").textContent = (verdict||memo) ? "保存済み（この端末内のみ）" : "";
+}
+function reviewBoxHtml(t){
+  const r = reviews[t.file] || {};
+  return `<div id="reviewbox">
+    <div class="rvtitle">レビュー（自動保存・「書出」でまとめて共有）</div>
+    <div id="verdicts">${VERDICTS.map(v=>
+      `<span class="vchip${r.verdict===v?" on":""}" data-v="${v}">${v}</span>`).join("")}</div>
+    <textarea id="memoarea" placeholder="メモ（気づき・違和感・刺さった行など）">${esc(r.memo||"")}</textarea>
+    <div id="savedmark">${r.updated_at?"保存済み（この端末内のみ）":""}</div>
+  </div>`;
+}
 function openReader(fi){
   if(fi<0 || fi>=filtered.length) return;
   current = fi;
@@ -275,20 +323,78 @@ function openReader(fi){
   $("list").classList.add("hidden");
   $("reader").classList.remove("hidden");
   $("backbtn").classList.remove("hidden");
+  $("importbtn").classList.add("hidden");
+  $("exportbtn").classList.add("hidden");
   $("apptitle").textContent = t.title || "";
   $("reader").innerHTML =
     `<h2 class="title">${esc(t.title||"")}</h2>
      <div class="rmeta">${esc((t.cast||[]).join("・"))}${t.genre?` ｜ ${esc(t.genre)}`:""}${t.id?` ｜ ${esc(t.id)}`:""}</div>
      ${renderBody(t.body||"")}
+     ${reviewBoxHtml(t)}
      <div id="navbtns">
        <button id="prevbtn" ${fi<=0?"disabled":""}>‹ 前の卓</button>
        <button id="nextbtn" ${fi>=filtered.length-1?"disabled":""}>次の卓 ›</button>
      </div>`;
-  $("prevbtn").onclick = ()=>{ openReader(current-1); scrollTo(0,0); };
-  $("nextbtn").onclick = ()=>{ openReader(current+1); scrollTo(0,0); };
+  $("prevbtn").onclick = ()=>{ openReader(current-1); };
+  $("nextbtn").onclick = ()=>{ openReader(current+1); };
+  document.querySelectorAll(".vchip").forEach(el=>{
+    el.onclick = ()=>{
+      const was = el.classList.contains("on");
+      document.querySelectorAll(".vchip").forEach(x=>x.classList.remove("on"));
+      if(!was) el.classList.add("on");
+      saveReview(t);
+    };
+  });
+  $("memoarea").addEventListener("input", ()=>{
+    clearTimeout(memoTimer);
+    $("savedmark").textContent = "…";
+    memoTimer = setTimeout(()=> saveReview(t), 500);
+  });
   scrollTo(0,0);
 }
 $("backbtn").onclick = ()=>{ renderList(); };
+
+/* ---------- swipe（iPhoneのページ捲り） ---------- */
+let swX=0, swY=0, swOn=false;
+$("reader").addEventListener("touchstart", e=>{
+  if(e.touches.length!==1){ swOn=false; return; }
+  if(e.target.closest("textarea,button,input,details,#reviewbox")){ swOn=false; return; }
+  swX = e.touches[0].clientX; swY = e.touches[0].clientY;
+  // iOS Safariの画面端スワイプ（戻る）と競合しない様に端16pxは無視
+  swOn = swX > 16 && swX < innerWidth - 16;
+}, {passive:true});
+$("reader").addEventListener("touchend", e=>{
+  if(!swOn) return; swOn = false;
+  const dx = e.changedTouches[0].clientX - swX;
+  const dy = e.changedTouches[0].clientY - swY;
+  if(Math.abs(dx) > 64 && Math.abs(dx) > Math.abs(dy)*1.8){
+    if(dx < 0) openReader(current+1);   // 左へ払う＝次の卓
+    else       openReader(current-1);   // 右へ払う＝前の卓
+  }
+}, {passive:true});
+
+/* ---------- review export ---------- */
+async function exportReviews(){
+  const entries = Object.entries(reviews);
+  if(!entries.length){ alert("レビューがまだありません（卓を開いて◎○△✕かメモを付けてください）"); return; }
+  const payload = {
+    format: "taku-reviews/1",
+    exported_at: new Date().toISOString(),
+    count: entries.length,
+    reviews: entries.map(([file, r]) => ({file, ...r})),
+  };
+  const name = "taku_reviews_" + new Date().toISOString().slice(0,10).replace(/-/g,"") + ".json";
+  const blob = new Blob([JSON.stringify(payload, null, 1)], {type:"application/json"});
+  const file = new File([blob], name, {type:"application/json"});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file], title:name}); return; }
+    catch(err){ if(err && err.name === "AbortError") return; }
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(()=> URL.revokeObjectURL(a.href), 5000);
+}
+$("exportbtn").onclick = ()=> exportReviews();
 
 /* ---------- boot ---------- */
 function render(){
@@ -301,6 +407,7 @@ function render(){
 }
 (async ()=>{
   await initFont();
+  reviews = (await DB.get("reviews")) || {};
   $("fontminus").onclick = ()=> bumpFont(-1);
   $("fontplus").onclick = ()=> bumpFont(+1);
   // 開発・自己ホスト用: ?src=URL で同一オリジンのバンドルを直接読める（既定はファイル読み込み）
