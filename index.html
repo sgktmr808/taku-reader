@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14161a">
+<title>卓リーダー</title>
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+:root{
+  --bg:#faf8f4; --fg:#2a2723; --sub:#8a8377; --card:#ffffff; --line:#e7e2d8;
+  --accent:#8a6d3b; --dim:#a09884; --chip:#efe9dd;
+  --c1:#8a6d3b; --c2:#4a6d8a; --c3:#6d8a4a; --c4:#8a4a6d; --c5:#4a8a7d;
+  --c6:#7d4a8a; --c7:#8a5a4a; --c8:#5a7a8a;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#14161a; --fg:#e6e1d7; --sub:#8d8779; --card:#1d2026; --line:#2b2f37;
+    --accent:#c9a86a; --dim:#7d776b; --chip:#262a32;
+    --c1:#c9a86a; --c2:#7aa5c9; --c3:#a5c97a; --c4:#c97aa5; --c5:#7ac9b8;
+    --c6:#b87ac9; --c7:#c98f7a; --c8:#8fb0c9;
+  }
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+html{font-size:var(--base,16px)}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font-family:"Hiragino Mincho ProN","Yu Mincho",serif;
+  line-height:1.9; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+header{
+  position:sticky; top:0; z-index:5; background:var(--bg);
+  border-bottom:1px solid var(--line); padding:.55rem .7rem;
+  display:flex; align-items:center; gap:.4rem;
+  font-family:"Hiragino Kaku Gothic ProN",sans-serif;
+}
+header h1{font-size:.95rem; margin:0; font-weight:600; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+header button{
+  background:none; border:1px solid var(--line); color:var(--fg); border-radius:8px;
+  padding:.28rem .5rem; font-size:.8rem; cursor:pointer; flex-shrink:0;
+}
+main{max-width:42rem; margin:0 auto; padding:0 .9rem 4rem}
+.hidden{display:none!important}
+
+/* ---- list ---- */
+#searchbox{
+  width:100%; margin:.8rem 0 .4rem; padding:.55rem .8rem; font-size:1rem;
+  border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--fg);
+  font-family:sans-serif;
+}
+#genres{display:flex; gap:.4rem; flex-wrap:wrap; margin:.4rem 0 .8rem; font-family:sans-serif}
+.chip{
+  font-size:.78rem; padding:.15rem .6rem; border-radius:999px; background:var(--chip);
+  color:var(--sub); border:1px solid transparent; cursor:pointer; user-select:none;
+}
+.chip.on{color:var(--accent); border-color:var(--accent)}
+.card{
+  background:var(--card); border:1px solid var(--line); border-radius:12px;
+  padding:.8rem .95rem; margin-bottom:.7rem; cursor:pointer;
+}
+.card h2{font-size:1.02rem; margin:0 0 .25rem; font-weight:600}
+.card .meta{font-size:.78rem; color:var(--sub); font-family:sans-serif; display:flex; gap:.7rem; flex-wrap:wrap}
+#count{font-size:.78rem; color:var(--sub); font-family:sans-serif; margin:.2rem 0 .8rem}
+
+/* ---- empty / import ---- */
+#empty{padding:2.5rem 0; text-align:center; color:var(--sub); font-family:sans-serif}
+#empty p{margin:.4rem 0; font-size:.92rem}
+.primary{
+  display:inline-block; margin-top:1rem; background:var(--accent); color:var(--bg);
+  border:none; border-radius:10px; padding:.6rem 1.3rem; font-size:.95rem; cursor:pointer;
+}
+
+/* ---- reader ---- */
+#reader h2.title{font-size:1.25rem; margin:1.1rem 0 .2rem; font-weight:600}
+#reader .rmeta{font-size:.78rem; color:var(--sub); font-family:sans-serif; margin-bottom:1.2rem}
+.scene{
+  text-align:center; color:var(--sub); font-size:.88rem; margin:1.4rem 0;
+  font-family:sans-serif;
+}
+.line{margin:0 0 1.05rem}
+.spk{font-weight:600; font-family:"Hiragino Kaku Gothic ProN",sans-serif; font-size:.92em; margin-right:.1rem}
+.dir{color:var(--dim); font-size:.94em}
+.para{margin:0 0 1.05rem}
+details.memo{
+  margin:2rem 0 1rem; border:1px dashed var(--line); border-radius:10px; padding:.6rem .8rem;
+  font-size:.86rem; color:var(--sub); font-family:sans-serif;
+}
+details.memo summary{cursor:pointer; color:var(--sub)}
+#navbtns{display:flex; gap:.6rem; margin:2rem 0 1rem; font-family:sans-serif}
+#navbtns button{flex:1; padding:.6rem; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--fg); font-size:.9rem; cursor:pointer}
+#navbtns button:disabled{opacity:.35}
+
+footer{
+  text-align:center; color:var(--sub); font-size:.72rem; font-family:sans-serif;
+  padding:1rem 0 2rem;
+}
+</style>
+</head>
+<body>
+<header>
+  <button id="backbtn" class="hidden">‹ 一覧</button>
+  <h1 id="apptitle">卓リーダー</h1>
+  <button id="fontminus" title="文字を小さく">A−</button>
+  <button id="fontplus" title="文字を大きく">A＋</button>
+  <button id="importbtn" title="バンドル読み込み">読込</button>
+</header>
+<input type="file" id="filein" accept=".json,application/json" class="hidden">
+
+<main>
+  <div id="empty" class="hidden">
+    <p>卓データがまだ入っていません。</p>
+    <p>手元の <b>taku_bundle.json</b> を読み込むと、<br>この端末の中だけに保存されます。<br>（どこにも送信されません）</p>
+    <button class="primary" onclick="document.getElementById('filein').click()">バンドルを読み込む</button>
+  </div>
+
+  <div id="list" class="hidden">
+    <input id="searchbox" type="search" placeholder="題名・座組・本文を検索">
+    <div id="genres"></div>
+    <div id="count"></div>
+    <div id="cards"></div>
+  </div>
+
+  <div id="reader" class="hidden"></div>
+
+  <footer id="foot"></footer>
+</main>
+
+<script>
+"use strict";
+/* ---------- storage (IndexedDB) ---------- */
+const DB = {
+  open(){ return new Promise((ok,ng)=>{
+    const r = indexedDB.open("taku-reader",1);
+    r.onupgradeneeded = ()=> r.result.createObjectStore("kv");
+    r.onsuccess = ()=> ok(r.result); r.onerror = ()=> ng(r.error);
+  })},
+  async get(k){ const db = await this.open(); return new Promise((ok,ng)=>{
+    const t = db.transaction("kv").objectStore("kv").get(k);
+    t.onsuccess = ()=> ok(t.result); t.onerror = ()=> ng(t.error);
+  })},
+  async set(k,v){ const db = await this.open(); return new Promise((ok,ng)=>{
+    const t = db.transaction("kv","readwrite").objectStore("kv").put(v,k);
+    t.onsuccess = ()=> ok(); t.onerror = ()=> ng(t.error);
+  })},
+};
+
+/* ---------- state ---------- */
+let bundle = null;      // {format, exported_at, talks:[...]}
+let filtered = [];      // current list order (indices into bundle.talks)
+let genreSel = "";      // selected genre chip
+let current = -1;       // index in filtered[] for reader
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ---------- font size ---------- */
+async function initFont(){
+  const px = (await DB.get("fontpx")) || 16;
+  document.documentElement.style.setProperty("--base", px+"px");
+}
+async function bumpFont(d){
+  let px = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--base"))||16;
+  px = Math.min(22, Math.max(13, px+d));
+  document.documentElement.style.setProperty("--base", px+"px");
+  await DB.set("fontpx", px);
+}
+
+/* ---------- import ---------- */
+function validate(b){
+  if(!b || b.format!=="taku-bundle/1" || !Array.isArray(b.talks)) throw new Error("形式が違います（taku-bundle/1 のJSONを指定してください）");
+  return b;
+}
+async function importText(text){
+  const b = validate(JSON.parse(text));
+  bundle = b;
+  await DB.set("bundle", b);
+  render();
+}
+$("filein").addEventListener("change", e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=> importText(r.result).catch(err=>alert(err.message));
+  r.readAsText(f, "utf-8");
+  e.target.value = "";
+});
+$("importbtn").onclick = ()=> $("filein").click();
+
+/* ---------- list ---------- */
+function talkGenres(){
+  const g = {};
+  bundle.talks.forEach(t=>{ if(t.genre) g[t.genre]=(g[t.genre]||0)+1; });
+  return Object.entries(g).sort((a,b)=>b[1]-a[1]);
+}
+function applyFilter(){
+  const q = $("searchbox").value.trim();
+  filtered = bundle.talks.map((_,i)=>i).filter(i=>{
+    const t = bundle.talks[i];
+    if(genreSel && t.genre!==genreSel) return false;
+    if(!q) return true;
+    const hay = (t.title||"")+"\n"+(t.cast||[]).join(" ")+"\n"+(t.body||"");
+    return q.split(/\s+/).every(w=> hay.includes(w));
+  });
+  $("count").textContent = `${filtered.length} 卓`;
+  $("cards").innerHTML = filtered.map(i=>{
+    const t = bundle.talks[i];
+    return `<div class="card" data-i="${i}">
+      <h2>${esc(t.title||t.file)}</h2>
+      <div class="meta">
+        <span>${esc((t.cast||[]).join("・"))}</span>
+        ${t.genre?`<span>${esc(t.genre)}</span>`:""}
+        ${t.id?`<span>${esc(t.id)}</span>`:""}
+        ${t.date?`<span>${esc(t.date)}</span>`:""}
+      </div></div>`;
+  }).join("");
+  document.querySelectorAll(".card").forEach(el=>{
+    el.onclick = ()=> openReader(filtered.indexOf(+el.dataset.i));
+  });
+}
+function renderList(){
+  $("empty").classList.add("hidden");
+  $("reader").classList.add("hidden");
+  $("backbtn").classList.add("hidden");
+  $("list").classList.remove("hidden");
+  $("apptitle").textContent = "卓リーダー";
+  const gs = talkGenres();
+  $("genres").innerHTML = gs.map(([g,n])=>
+    `<span class="chip${g===genreSel?" on":""}" data-g="${esc(g)}">${esc(g)} ${n}</span>`).join("");
+  document.querySelectorAll(".chip").forEach(el=>{
+    el.onclick = ()=>{ genreSel = (genreSel===el.dataset.g)?"":el.dataset.g; renderList(); };
+  });
+  applyFilter();
+  $("foot").textContent = bundle.exported_at ? `バンドル書き出し: ${bundle.exported_at}` : "";
+}
+$("searchbox") && ($("searchbox").oninput = ()=> applyFilter());
+
+/* ---------- reader ---------- */
+const PALETTE = ["--c1","--c2","--c3","--c4","--c5","--c6","--c7","--c8"];
+function colorFor(name, map){
+  if(!(name in map)) map[name] = PALETTE[Object.keys(map).length % PALETTE.length];
+  return map[name];
+}
+function renderBody(md){
+  const lines = md.split("\n");
+  const out = []; const cmap = {};
+  let memoBuf = null;
+  const dirify = s => esc(s).replace(/（[^）]*）/g, m=>`<span class="dir">${m}</span>`);
+  for(const raw of lines){
+    const line = raw.replace(/\s+$/,"");
+    if(memoBuf !== null){ memoBuf.push(line); continue; }
+    if(!line.trim()) continue;
+    if(/^##\s*座組メモ/.test(line)){ memoBuf = []; continue; }
+    if(/^##\s*生成情報/.test(line)){ break; }
+    if(/^##\s+/.test(line)) continue;            // 冒頭タイトル（別表示済み）
+    if(/^#\s+/.test(line)){ out.push(`<div class="scene">${dirify(line.replace(/^#\s+/,""))}</div>`); continue; }
+    const m = line.match(/^(\S{1,14})：(.*)$/);
+    if(m){
+      const v = colorFor(m[1], cmap);
+      out.push(`<p class="line"><span class="spk" style="color:var(${v})">${esc(m[1])}</span>：${dirify(m[2])}</p>`);
+    } else {
+      out.push(`<p class="para">${dirify(line)}</p>`);
+    }
+  }
+  let html = out.join("");
+  if(memoBuf && memoBuf.filter(l=>l.trim()).length){
+    html += `<details class="memo"><summary>座組メモ</summary>${
+      memoBuf.filter(l=>l.trim()).map(l=>`<div>${esc(l.replace(/^-\s*/,"・"))}</div>`).join("")
+    }</details>`;
+  }
+  return html;
+}
+function openReader(fi){
+  if(fi<0 || fi>=filtered.length) return;
+  current = fi;
+  const t = bundle.talks[filtered[fi]];
+  $("list").classList.add("hidden");
+  $("reader").classList.remove("hidden");
+  $("backbtn").classList.remove("hidden");
+  $("apptitle").textContent = t.title || "";
+  $("reader").innerHTML =
+    `<h2 class="title">${esc(t.title||"")}</h2>
+     <div class="rmeta">${esc((t.cast||[]).join("・"))}${t.genre?` ｜ ${esc(t.genre)}`:""}${t.id?` ｜ ${esc(t.id)}`:""}</div>
+     ${renderBody(t.body||"")}
+     <div id="navbtns">
+       <button id="prevbtn" ${fi<=0?"disabled":""}>‹ 前の卓</button>
+       <button id="nextbtn" ${fi>=filtered.length-1?"disabled":""}>次の卓 ›</button>
+     </div>`;
+  $("prevbtn").onclick = ()=>{ openReader(current-1); scrollTo(0,0); };
+  $("nextbtn").onclick = ()=>{ openReader(current+1); scrollTo(0,0); };
+  scrollTo(0,0);
+}
+$("backbtn").onclick = ()=>{ renderList(); };
+
+/* ---------- boot ---------- */
+function render(){
+  if(bundle && bundle.talks.length){ renderList(); }
+  else {
+    $("list").classList.add("hidden"); $("reader").classList.add("hidden");
+    $("backbtn").classList.add("hidden");
+    $("empty").classList.remove("hidden");
+  }
+}
+(async ()=>{
+  await initFont();
+  $("fontminus").onclick = ()=> bumpFont(-1);
+  $("fontplus").onclick = ()=> bumpFont(+1);
+  // 開発・自己ホスト用: ?src=URL で同一オリジンのバンドルを直接読める（既定はファイル読み込み）
+  const src = new URLSearchParams(location.search).get("src");
+  if(src){
+    try{ await importText(await (await fetch(src)).text()); }
+    catch(e){ console.warn("src読み込み失敗", e); }
+  }
+  if(!bundle) bundle = (await DB.get("bundle")) || null;
+  render();
+  // 開発用: ?open=T0387 で当該卓を直接開く
+  const openId = new URLSearchParams(location.search).get("open");
+  if(openId && bundle){
+    const bi = bundle.talks.findIndex(t=> t.id===openId || t.file===openId);
+    if(bi>=0){ const fi = filtered.indexOf(bi); if(fi>=0) openReader(fi); }
+  }
+  if("serviceWorker" in navigator && location.protocol.startsWith("http")){
+    navigator.serviceWorker.register("sw.js").catch(()=>{});
+  }
+})();
+</script>
+</body>
+</html>

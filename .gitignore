@@ -1,0 +1,4 @@
+# 卓データは絶対にコミットしない（ビューアーはデータレス運用）
+taku_bundle*.json
+*.bundle.json
+.DS_Store
