@@ -235,6 +235,7 @@ function applyFilter(){
         ${t.genre?`<span>${esc(t.genre)}</span>`:""}
         ${t.id?`<span>${esc(t.id)}</span>`:""}
         ${t.date?`<span>${esc(t.date)}</span>`:""}
+        <span>${charCount(t).toLocaleString()}字</span>
       </div></div>`;
   }).join("");
   document.querySelectorAll(".card").forEach(el=>{
@@ -259,6 +260,19 @@ function renderList(){
   $("foot").textContent = bundle.exported_at ? `バンドル書き出し: ${bundle.exported_at}` : "";
 }
 $("searchbox") && ($("searchbox").oninput = ()=> applyFilter());
+
+/* ---------- 総文字数 ----------
+   本文＝コードフェンスと座組メモ/生成情報の節を除き、空白類を全除去して数える
+   （本体リポジトリの地図リーダー・tsugi_metrics.pyと同じ流儀）。403卓×検索の
+   都度再計算は重いのでファイル名でメモ化 */
+const charCache = {};
+function charCount(t){
+  if(t.file in charCache) return charCache[t.file];
+  const n = (t.body||"").replace(/```[a-zA-Z]*\n[\s\S]*?```/g,"")
+    .split(/\n(?:---\s*\n+)?##\s*(?:座組メモ|回収メモ|制作メモ|生成情報)[^\n]*(?:\n|$)/)[0]
+    .replace(/\s/g,"").length;
+  return charCache[t.file] = n;
+}
 
 /* ---------- reader ---------- */
 const PALETTE = ["--c1","--c2","--c3","--c4","--c5","--c6","--c7","--c8"];
@@ -328,7 +342,7 @@ function openReader(fi){
   $("apptitle").textContent = t.title || "";
   $("reader").innerHTML =
     `<h2 class="title">${esc(t.title||"")}</h2>
-     <div class="rmeta">${esc((t.cast||[]).join("・"))}${t.genre?` ｜ ${esc(t.genre)}`:""}${t.id?` ｜ ${esc(t.id)}`:""}</div>
+     <div class="rmeta">${esc((t.cast||[]).join("・"))}${t.genre?` ｜ ${esc(t.genre)}`:""}${t.id?` ｜ ${esc(t.id)}`:""} ｜ ${charCount(t).toLocaleString()}字</div>
      ${renderBody(t.body||"")}
      ${reviewBoxHtml(t)}
      <div id="navbtns">
