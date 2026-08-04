@@ -111,6 +111,21 @@ details.memo summary{cursor:pointer; color:var(--sub)}
 #savedmark{font-size:.72rem; color:var(--sub); text-align:right; min-height:1em; margin-top:.2rem}
 .mark{color:var(--accent); font-family:sans-serif; font-size:.9em; margin-right:.15rem}
 
+/* ---- personas ---- */
+#tabs{display:flex; gap:.4rem; margin:.8rem 0 0; font-family:sans-serif}
+#tabs .chip{font-size:.85rem; padding:.3rem .9rem}
+.pmeta{font-size:.78rem; color:var(--sub); font-family:sans-serif; display:flex; gap:.7rem; flex-wrap:wrap}
+.yomi{color:var(--sub); font-size:.72em; font-weight:400; margin-left:.4rem}
+#pdetail h2.pname{font-size:1.25rem; margin:1.1rem 0 .15rem; font-weight:600}
+#pdetail .phead{font-size:.8rem; color:var(--sub); font-family:sans-serif; margin-bottom:1rem}
+#pdetail .psec{margin:0 0 .9rem}
+#pdetail .psec h3{font-size:.82rem; color:var(--accent); font-family:sans-serif; font-weight:600; margin:0 0 .3rem; letter-spacing:.05em}
+#pdetail .psec div{font-size:.95rem; margin:0 0 .45rem}
+#pdetail details.psec{border:1px dashed var(--line); border-radius:10px; padding:.5rem .7rem}
+#pdetail details.psec summary{cursor:pointer; font-size:.82rem; color:var(--sub); font-family:sans-serif}
+#pdetail details.psec[open] summary{color:var(--accent); margin-bottom:.4rem}
+.castlink{cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px}
+
 footer{
   text-align:center; color:var(--sub); font-size:.72rem; font-family:sans-serif;
   padding:1rem 0 2rem;
@@ -136,6 +151,7 @@ footer{
   </div>
 
   <div id="list" class="hidden">
+    <div id="tabs"></div>
     <input id="searchbox" type="search" placeholder="題名・座組・本文を検索">
     <div id="genres"></div>
     <div id="count"></div>
@@ -143,6 +159,7 @@ footer{
   </div>
 
   <div id="reader" class="hidden"></div>
+  <div id="pdetail" class="hidden"></div>
 
   <footer id="foot"></footer>
 </main>
@@ -167,11 +184,15 @@ const DB = {
 };
 
 /* ---------- state ---------- */
-let bundle = null;      // {format, exported_at, talks:[...]}
+let bundle = null;      // {format, exported_at, talks:[...], personas:[...]}
 let filtered = [];      // current list order (indices into bundle.talks)
 let genreSel = "";      // selected genre chip
 let current = -1;       // index in filtered[] for reader
 let reviews = {};       // {file: {id,title,verdict,memo,updated_at}} 端末内のみ
+let mode = "talks";     // "talks" | "personas"（一覧のタブ）
+let pFiltered = [];     // persona list order (indices into bundle.personas)
+let aliasIndex = {};    // 話者ラベル → personas index（バンドル読込時に構築）
+const pHay = {};        // persona検索用の連結テキスト（遅延メモ化）
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -193,10 +214,17 @@ function validate(b){
   if(!b || b.format!=="taku-bundle/1" || !Array.isArray(b.talks)) throw new Error("形式が違います（taku-bundle/1 のJSONを指定してください）");
   return b;
 }
+function prepPersonas(){
+  aliasIndex = {}; Object.keys(pHay).forEach(k=>delete pHay[k]);
+  (bundle.personas||[]).forEach((p,i)=>{
+    (p.aliases||[]).concat([p.name]).forEach(a=>{ if(a) aliasIndex[a]=i; });
+  });
+}
 async function importText(text){
   const b = validate(JSON.parse(text));
   bundle = b;
   await DB.set("bundle", b);
+  prepPersonas();
   render();
 }
 $("filein").addEventListener("change", e=>{
@@ -238,28 +266,124 @@ function applyFilter(){
         <span>${charCount(t).toLocaleString()}字</span>
       </div></div>`;
   }).join("");
-  document.querySelectorAll(".card").forEach(el=>{
+  document.querySelectorAll("#cards .card").forEach(el=>{
     el.onclick = ()=> openReader(filtered.indexOf(+el.dataset.i));
+  });
+}
+/* ---------- personas list ---------- */
+function personaHay(i){
+  if(i in pHay) return pHay[i];
+  const p = bundle.personas[i];
+  return pHay[i] = [p.name, p.yomi, p.occupation, p.gender,
+    ...(p.sections||[]).map(s=>s.label+"\n"+s.lines.join("\n"))].join("\n");
+}
+function applyPersonaFilter(){
+  const q = $("searchbox").value.trim();
+  const ps = bundle.personas||[];
+  pFiltered = ps.map((_,i)=>i).filter(i=>{
+    if(!q) return true;
+    const hay = personaHay(i);
+    return q.split(/\s+/).every(w=> hay.includes(w));
+  });
+  $("count").textContent = `${pFiltered.length} 人`;
+  $("cards").innerHTML = pFiltered.map(i=>{
+    const p = bundle.personas[i];
+    const one = ((p.sections||[])[0]?.lines[0]||"").slice(0,60);
+    return `<div class="card" data-p="${i}">
+      <h2>${esc(p.name)}${p.yomi?`<span class="yomi">${esc(p.yomi)}</span>`:""}</h2>
+      <div class="pmeta">
+        ${p.age!==""&&p.age!=null?`<span>${esc(p.age)}歳</span>`:""}
+        ${p.gender?`<span>${esc(p.gender)}</span>`:""}
+        ${p.occupation?`<span>${esc(p.occupation)}</span>`:""}
+        <span>${(p.talks||[]).length}卓</span>
+      </div>
+      ${one?`<div class="pmeta" style="margin-top:.25rem">${esc(one)}…</div>`:""}
+    </div>`;
+  }).join("");
+  document.querySelectorAll("#cards .card").forEach(el=>{
+    el.onclick = ()=> openPersona(+el.dataset.p);
   });
 }
 function renderList(){
   $("empty").classList.add("hidden");
   $("reader").classList.add("hidden");
+  $("pdetail").classList.add("hidden");
   $("backbtn").classList.add("hidden");
   $("list").classList.remove("hidden");
   $("importbtn").classList.remove("hidden");
   $("exportbtn").classList.remove("hidden");
   $("apptitle").textContent = "卓リーダー";
-  const gs = talkGenres();
-  $("genres").innerHTML = gs.map(([g,n])=>
-    `<span class="chip${g===genreSel?" on":""}" data-g="${esc(g)}">${esc(g)} ${n}</span>`).join("");
-  document.querySelectorAll(".chip").forEach(el=>{
-    el.onclick = ()=>{ genreSel = (genreSel===el.dataset.g)?"":el.dataset.g; renderList(); };
-  });
-  applyFilter();
+  const np = (bundle.personas||[]).length;
+  $("tabs").innerHTML = np ?
+    `<span class="chip${mode==="talks"?" on":""}" id="tabTalks">卓 ${bundle.talks.length}</span>`+
+    `<span class="chip${mode==="personas"?" on":""}" id="tabPersonas">人物 ${np}</span>` : "";
+  if(np){
+    $("tabTalks").onclick = ()=>{ if(mode!=="talks"){ mode="talks"; $("searchbox").value=""; renderList(); } };
+    $("tabPersonas").onclick = ()=>{ if(mode!=="personas"){ mode="personas"; $("searchbox").value=""; renderList(); } };
+  }
+  if(mode==="personas" && np){
+    $("searchbox").placeholder = "名前・読み・職業・プロフィールを検索";
+    $("genres").innerHTML = "";
+    applyPersonaFilter();
+  } else {
+    mode = "talks";
+    $("searchbox").placeholder = "題名・座組・本文を検索";
+    const gs = talkGenres();
+    $("genres").innerHTML = gs.map(([g,n])=>
+      `<span class="chip${g===genreSel?" on":""}" data-g="${esc(g)}">${esc(g)} ${n}</span>`).join("");
+    document.querySelectorAll("#genres .chip").forEach(el=>{
+      el.onclick = ()=>{ genreSel = (genreSel===el.dataset.g)?"":el.dataset.g; renderList(); };
+    });
+    applyFilter();
+  }
   $("foot").textContent = bundle.exported_at ? `バンドル書き出し: ${bundle.exported_at}` : "";
 }
-$("searchbox") && ($("searchbox").oninput = ()=> applyFilter());
+$("searchbox") && ($("searchbox").oninput = ()=> mode==="personas" ? applyPersonaFilter() : applyFilter());
+
+/* ---------- persona detail ---------- */
+const OPEN_SECTIONS = 4;  // 先頭からこの数だけ開いて表示・残りは折りたたみ
+function openPersona(pi){
+  const p = (bundle.personas||[])[pi]; if(!p) return;
+  mode = "personas";
+  $("list").classList.add("hidden");
+  $("reader").classList.add("hidden");
+  $("pdetail").classList.remove("hidden");
+  $("backbtn").classList.remove("hidden");
+  $("importbtn").classList.add("hidden");
+  $("exportbtn").classList.add("hidden");
+  $("apptitle").textContent = p.name;
+  const head = [p.yomi, (p.age!==""&&p.age!=null)?p.age+"歳":"", p.gender, p.occupation]
+    .filter(Boolean).map(esc).join(" ｜ ");
+  const secs = (p.sections||[]).map((s,si)=>{
+    const body = s.lines.map(l=>`<div>${esc(l)}</div>`).join("");
+    if(si < OPEN_SECTIONS)
+      return `<div class="psec"><h3>${esc(s.label)}</h3>${body}</div>`;
+    return `<details class="psec"><summary>${esc(s.label)}</summary>${body}</details>`;
+  }).join("");
+  const byFile = {}; bundle.talks.forEach((t,i)=>byFile[t.file]=i);
+  const tl = (p.talks||[]).map(f=>{
+    const bi = byFile[f]; if(bi==null) return "";
+    const t = bundle.talks[bi];
+    return `<div class="card" data-t="${bi}">
+      <h2>${esc(t.title||t.file)}</h2>
+      <div class="meta"><span>${esc((t.cast||[]).join("・"))}</span>${t.id?`<span>${esc(t.id)}</span>`:""}${t.date?`<span>${esc(t.date)}</span>`:""}</div>
+    </div>`;
+  }).join("");
+  $("pdetail").innerHTML =
+    `<h2 class="pname">${esc(p.name)}</h2>
+     <div class="phead">${head}</div>
+     ${secs}
+     ${tl?`<div class="psec" style="margin-top:1.4rem"><h3>登場する卓（${(p.talks||[]).length}）</h3>${tl}</div>`:""}`;
+  document.querySelectorAll("#pdetail .card").forEach(el=>{
+    el.onclick = ()=>{
+      mode = "talks"; genreSel = ""; $("searchbox").value = "";
+      renderList();
+      const fi = filtered.indexOf(+el.dataset.t);
+      if(fi>=0) openReader(fi);
+    };
+  });
+  scrollTo(0,0);
+}
 
 /* ---------- 総文字数 ----------
    本文＝コードフェンスと座組メモ/生成情報の節を除き、空白類を全除去して数える
@@ -335,14 +459,17 @@ function openReader(fi){
   current = fi;
   const t = bundle.talks[filtered[fi]];
   $("list").classList.add("hidden");
+  $("pdetail").classList.add("hidden");
   $("reader").classList.remove("hidden");
   $("backbtn").classList.remove("hidden");
   $("importbtn").classList.add("hidden");
   $("exportbtn").classList.add("hidden");
   $("apptitle").textContent = t.title || "";
+  const castHtml = (t.cast||[]).map(c=> aliasIndex[c]!=null
+    ? `<span class="castlink" data-a="${esc(c)}">${esc(c)}</span>` : esc(c)).join("・");
   $("reader").innerHTML =
     `<h2 class="title">${esc(t.title||"")}</h2>
-     <div class="rmeta">${esc((t.cast||[]).join("・"))}${t.genre?` ｜ ${esc(t.genre)}`:""}${t.id?` ｜ ${esc(t.id)}`:""} ｜ ${charCount(t).toLocaleString()}字</div>
+     <div class="rmeta">${castHtml}${t.genre?` ｜ ${esc(t.genre)}`:""}${t.id?` ｜ ${esc(t.id)}`:""} ｜ ${charCount(t).toLocaleString()}字</div>
      ${renderBody(t.body||"")}
      ${reviewBoxHtml(t)}
      <div id="navbtns">
@@ -351,6 +478,9 @@ function openReader(fi){
      </div>`;
   $("prevbtn").onclick = ()=>{ openReader(current-1); };
   $("nextbtn").onclick = ()=>{ openReader(current+1); };
+  document.querySelectorAll(".castlink").forEach(el=>{
+    el.onclick = ()=> openPersona(aliasIndex[el.dataset.a]);
+  });
   document.querySelectorAll(".vchip").forEach(el=>{
     el.onclick = ()=>{
       const was = el.classList.contains("on");
@@ -431,13 +561,18 @@ function render(){
     catch(e){ console.warn("src読み込み失敗", e); }
   }
   if(!bundle) bundle = (await DB.get("bundle")) || null;
+  if(bundle) prepPersonas();
   render();
-  // 開発用: ?open=T0387 で当該卓を直接開く
-  const openId = new URLSearchParams(location.search).get("open");
+  // 開発用: ?open=T0387 で当該卓を直接開く／?tab=personas で人物タブ／?persona=名前 で人物詳細
+  const qp = new URLSearchParams(location.search);
+  const openId = qp.get("open");
   if(openId && bundle){
     const bi = bundle.talks.findIndex(t=> t.id===openId || t.file===openId);
     if(bi>=0){ const fi = filtered.indexOf(bi); if(fi>=0) openReader(fi); }
   }
+  if(qp.get("tab")==="personas" && bundle){ mode="personas"; renderList(); }
+  const pq = qp.get("persona");
+  if(pq && bundle && aliasIndex[pq]!=null){ openPersona(aliasIndex[pq]); }
   if("serviceWorker" in navigator && location.protocol.startsWith("http")){
     navigator.serviceWorker.register("sw.js").catch(()=>{});
   }
