@@ -261,6 +261,7 @@ function applyFilter(){
       <div class="meta">
         <span>${esc((t.cast||[]).join("・"))}</span>
         ${t.genre?`<span>${esc(t.genre)}</span>`:""}
+        ${t.when?`<span>作中 ${esc(t.when)}</span>`:""}
         ${t.id?`<span>${esc(t.id)}</span>`:""}
         ${t.date?`<span>${esc(t.date)}</span>`:""}
         <span>${charCount(t).toLocaleString()}字</span>
@@ -469,7 +470,7 @@ function openReader(fi){
     ? `<span class="castlink" data-a="${esc(c)}">${esc(c)}</span>` : esc(c)).join("・");
   $("reader").innerHTML =
     `<h2 class="title">${esc(t.title||"")}</h2>
-     <div class="rmeta">${castHtml}${t.genre?` ｜ ${esc(t.genre)}`:""}${t.id?` ｜ ${esc(t.id)}`:""} ｜ ${charCount(t).toLocaleString()}字</div>
+     <div class="rmeta">${castHtml}${t.genre?` ｜ ${esc(t.genre)}`:""}${t.when?` ｜ 作中 ${esc(t.when)}`:""}${t.id?` ｜ ${esc(t.id)}`:""} ｜ ${charCount(t).toLocaleString()}字</div>
      ${renderBody(t.body||"")}
      ${reviewBoxHtml(t)}
      <div id="navbtns">
