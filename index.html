@@ -263,9 +263,18 @@ function chronoKey(t, i){
   const w = t.when||"";
   const m = w.match(/(19|20)\d\d/);
   const yr = m ? +m[0] : (w ? 3000 : 9999);
+  return [ep, yr, seasonRank(w), t.date||"", i];
+}
+function seasonRank(w){
+  // 季節の細分＝早/初◯ < ◯・盛◯ < 晩◯・◯末（例: 初夏21 < 盛夏22 < 晩夏23）
   const sm = w.match(/[春夏秋冬]/);
-  const se = sm ? {"春":1,"夏":2,"秋":3,"冬":4}[sm[0]] : 0;
-  return [ep, yr, se, t.date||"", i];
+  if(!sm) return 0;
+  const s = {"春":10,"夏":20,"秋":30,"冬":40}[sm[0]];
+  const pre = w[sm.index-1]||"", post = w[sm.index+1]||"";
+  let mod = 2;
+  if(pre==="早"||pre==="初") mod = 1;
+  if(pre==="晩"||post==="末") mod = 3;
+  return s+mod;
 }
 function windHash(s){
   // 今日の風＝日付シードの決定論シャッフル（同じ日は同じ並び・明日は別の並び）
