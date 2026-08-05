@@ -254,11 +254,14 @@ function talkGenres(){
 /* ---------- 卓の並び順（2026-08-05） ---------- */
 const EPOCH_RANK = {"前史":0, "過去":1, "現在":2};
 function chronoKey(t, i){
-  // 作中時間キー＝[エポック段, 年, 制作日]。未設定＝現在扱いで現在ブロックの最後尾（正典どおり）
+  // 作中時間キー＝[エポック段, 年, 季節, 制作日]。未設定＝現在扱いで現在ブロックの最後尾（正典どおり）
   const ep = (t.epoch in EPOCH_RANK) ? EPOCH_RANK[t.epoch] : 2;
-  const m = (t.when||"").match(/(19|20)\d\d/);
-  const yr = m ? +m[0] : (t.when ? 3000 : 9999);
-  return [ep, yr, t.date||"", i];
+  const w = t.when||"";
+  const m = w.match(/(19|20)\d\d/);
+  const yr = m ? +m[0] : (w ? 3000 : 9999);
+  const sm = w.match(/[春夏秋冬]/);
+  const se = sm ? {"春":1,"夏":2,"秋":3,"冬":4}[sm[0]] : 0;
+  return [ep, yr, se, t.date||"", i];
 }
 function windHash(s){
   // 今日の風＝日付シードの決定論シャッフル（同じ日は同じ並び・明日は別の並び）
@@ -269,7 +272,7 @@ function windHash(s){
 function sortTalks(idx){
   const t = i => bundle.talks[i];
   const chronoCmp = (a,b)=>{ const ka=chronoKey(t(a),a), kb=chronoKey(t(b),b);
-    for(let k=0;k<4;k++){ if(ka[k]<kb[k])return -1; if(ka[k]>kb[k])return 1; } return 0; };
+    for(let k=0;k<5;k++){ if(ka[k]<kb[k])return -1; if(ka[k]>kb[k])return 1; } return 0; };
   const windSeed = new Date().toISOString().slice(0,10);
   switch(sortMode){
     case "old":        return idx.slice().reverse();          // バンドル既定=制作新→旧の逆
