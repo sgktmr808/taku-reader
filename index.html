@@ -58,6 +58,10 @@ main{max-width:42rem; margin:0 auto; padding:0 .9rem 4rem}
   background:var(--card); border:1px solid var(--line); border-radius:12px;
   padding:.8rem .95rem; margin-bottom:.7rem; cursor:pointer;
 }
+.card .meta .key{color:var(--accent)}
+.ghead{margin:1.2rem 0 .5rem; font-size:.78rem; color:var(--sub); font-family:sans-serif;
+  letter-spacing:.06em; display:flex; align-items:center; gap:.6rem}
+.ghead::after{content:""; flex:1; height:1px; background:var(--line)}
 .card h2{font-size:1.02rem; margin:0 0 .25rem; font-weight:600}
 .card .meta{font-size:.78rem; color:var(--sub); font-family:sans-serif; display:flex; gap:.7rem; flex-wrap:wrap}
 #count{font-size:.78rem; color:var(--sub); font-family:sans-serif; margin:.2rem 0 .8rem}
@@ -299,6 +303,35 @@ $("sortsel").onchange = async ()=>{
   else { sortMode=v; await DB.set("sortmode",v); applyFilter(); }
 };
 
+function groupLabel(t){
+  // 並び順に応じたリストの区切り見出し（2026-08-05＝作中時間が一覧で追えない問題への対応）
+  switch(sortMode){
+    case "new": case "old":
+      return t.date ? "制作 "+t.date.slice(0,7) : "";
+    case "chrono": case "chronoDesc": {
+      if(!t.when) return "現在（作中日付・未設定）";
+      const m = t.when.match(/(19|20)\d\d/);
+      const ep = (t.epoch in EPOCH_RANK) ? t.epoch : "現在";
+      return m ? `${ep}・${m[0]}年` : `${ep}・年不詳`;
+    }
+    default: return "";
+  }
+}
+function cardMeta(t){
+  // 並び順の鍵になっている情報を先頭＋強調色で出す
+  const chrono = sortMode==="chrono"||sortMode==="chronoDesc";
+  const byDate = sortMode==="new"||sortMode==="old";
+  const items = [];
+  if(chrono) items.push(`<span class="key">作中 ${t.when?esc(t.when):"日付未設定"}</span>`);
+  if(sortMode==="short") items.push(`<span class="key">${charCount(t).toLocaleString()}字</span>`);
+  items.push(`<span>${esc((t.cast||[]).join("・"))}</span>`);
+  if(t.genre) items.push(`<span>${esc(t.genre)}</span>`);
+  if(!chrono && t.when) items.push(`<span>作中 ${esc(t.when)}</span>`);
+  if(t.id) items.push(`<span>${esc(t.id)}</span>`);
+  if(t.date) items.push(`<span${byDate?' class="key"':''}>${esc(t.date)}</span>`);
+  if(sortMode!=="short") items.push(`<span>${charCount(t).toLocaleString()}字</span>`);
+  return items.join("");
+}
 function applyFilter(){
   const q = $("searchbox").value.trim();
   filtered = bundle.talks.map((_,i)=>i).filter(i=>{
@@ -310,20 +343,17 @@ function applyFilter(){
   });
   filtered = sortTalks(filtered);
   $("count").textContent = `${filtered.length} 卓`;
+  let lastGroup = null;
   $("cards").innerHTML = filtered.map(i=>{
     const t = bundle.talks[i];
     const r = reviews[t.file];
     const mark = r ? `<span class="mark">${esc(r.verdict || "✎")}</span>` : "";
-    return `<div class="card" data-i="${i}">
+    const g = groupLabel(t);
+    const head = (g && g!==lastGroup) ? `<div class="ghead">${esc(g)}</div>` : "";
+    lastGroup = g;
+    return head + `<div class="card" data-i="${i}">
       <h2>${mark}${esc(t.title||t.file)}</h2>
-      <div class="meta">
-        <span>${esc((t.cast||[]).join("・"))}</span>
-        ${t.genre?`<span>${esc(t.genre)}</span>`:""}
-        ${t.when?`<span>作中 ${esc(t.when)}</span>`:""}
-        ${t.id?`<span>${esc(t.id)}</span>`:""}
-        ${t.date?`<span>${esc(t.date)}</span>`:""}
-        <span>${charCount(t).toLocaleString()}字</span>
-      </div></div>`;
+      <div class="meta">${cardMeta(t)}</div></div>`;
   }).join("");
   document.querySelectorAll("#cards .card").forEach(el=>{
     el.onclick = ()=> openReader(filtered.indexOf(+el.dataset.i));
@@ -616,6 +646,9 @@ function render(){
   reviews = (await DB.get("reviews")) || {};
   sortMode = (await DB.get("sortmode")) || "new";
   pSortMode = (await DB.get("psortmode")) || "talks";
+  // 開発用: ?sort=chrono 等で並び順を上書き（保存はしない）
+  const sq = new URLSearchParams(location.search).get("sort");
+  if(sq && SORT_OPTIONS.talks.some(([v])=>v===sq)) sortMode = sq;
   $("fontminus").onclick = ()=> bumpFont(-1);
   $("fontplus").onclick = ()=> bumpFont(+1);
   // 開発・自己ホスト用: ?src=URL で同一オリジンのバンドルを直接読める（既定はファイル読み込み）
