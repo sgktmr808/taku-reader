@@ -607,17 +607,19 @@ function openPersona(pi){
   }).join("");
   if(openPersona._last !== pi){ phCat="id"; phItem=""; openPersona._last = pi; }
   const V = bundle.photo_variations;
-  const hasDesc = p.photo && p.photo.descriptors && V;
+  const hasDesc = V && ((p.photo && p.photo.descriptors)
+    || (photoLang==="ja" && jaSectionLines(p,"外見").length));
   let selHtml = "";
   if(hasDesc){
+    const sigsN = photoLang==="ja" ? ((p.photo||{}).signature_ja||[]).length : ((p.photo||{}).signature||[]).length;
     const cats = [["id","証明写真（基本）"]].concat(Object.entries(V.categories)
-      .filter(([k])=> k!=="signature" || (p.photo.signature||[]).length)
+      .filter(([k])=> k!=="signature" || sigsN)
       .map(([k,c])=>[k,c.label]));
     selHtml = `<div class="copyrow"><select id="phCatSel" style="padding:.35rem .5rem;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg);font-family:sans-serif">`
       + cats.map(([k,l])=>`<option value="${k}"${phCat===k?" selected":""}>${esc(l)}</option>`).join("")
       + `</select><select id="phItemSel" style="padding:.35rem .5rem;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg);font-family:sans-serif${phCat==="id"?";display:none":""}">`
       + (phCat==="signature"
-          ? (p.photo.signature||[]).map((s,i)=>`<option value="${i}"${String(phItem)===String(i)?" selected":""}>特徴${i+1}</option>`).join("")
+          ? (photoLang==="ja"?((p.photo||{}).signature_ja||[]):((p.photo||{}).signature||[])).map((s,i)=>`<option value="${i}"${String(phItem)===String(i)?" selected":""}>特徴${i+1}</option>`).join("")
           : (phCat!=="id" ? V.categories[phCat].items.map(it=>`<option value="${it.key}"${phItem===it.key?" selected":""}>${esc(it.label)}</option>`).join("") : ""))
       + `</select></div>`;
   }
