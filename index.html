@@ -459,8 +459,15 @@ function renderList(){
     const hasPhoto = (bundle.personas||[]).some(p=>p.photo&&(p.photo.status==="ready"||p.photo.status==="done"));
     if(hasPhoto){
       $("genres").innerHTML = `<div id="stylerow">
+        <select id="langsel" style="padding:.4rem .5rem;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--fg);font-family:sans-serif">
+          <option value="ja"${photoLang==="ja"?" selected":""}>原文</option>
+          <option value="en"${photoLang==="en"?" selected":""}>英語</option>
+        </select>
         <input id="stylein" placeholder="画風カスタム（全プロンプトの冒頭に反映）" value="${esc(photoPrefix)}">
         <button id="stylesave">保存</button></div>`;
+      $("langsel").onchange = async ()=>{
+        photoLang = $("langsel").value; await DB.set("photolang", photoLang);
+      };
       $("stylesave").onclick = async ()=>{
         photoPrefix = $("stylein").value.trim();
         await DB.set("photoprefix", photoPrefix);
@@ -501,8 +508,40 @@ function photoTexts(p){
   return {prompt: pr + "\n\n" + params, negative: ng};
 }
 let phCat = "id", phItem = "";   // 人物詳細のバリエーション選択（開くたびに基本形へ戻す）
+let photoLang = "ja";            // 版下の言語（既定＝原文。検品するのは読む側の人間）
+function jaSectionLines(p, label){
+  const s = (p.sections||[]).find(x=>x.label===label);
+  return s ? s.lines : [];
+}
+function photoJaCompose(p){
+  // 原文直組み＝外見正典の日本語をほぼそのまま並べる（解釈層ゼロ）
+  const V = bundle.photo_variations; if(!V || !V.ja) return null;
+  const J = V.ja;
+  const app = jaSectionLines(p,"外見").map(x=>String(x).replace(/。?\s*$/,"。")).join("");
+  if(!app) return null;
+  const gender = p.gender==="女"?"女性":(p.gender==="男"?"男性":"人物");
+  const who = (p.age!==""&&p.age!=null ? p.age+"歳の" : "")+gender+"。";
+  let head, clause="", frame="", tail;
+  if(phCat==="id" || !phCat){
+    head = photoPrefix ? J.id_opening.replace("証明写真。","証明写真の構図。") : J.id_opening;
+    tail = J.expression_id + J.background + J.lighting + J.avoid_common + J.avoid_id;
+  } else {
+    const C = V.categories[phCat]; if(!C) return null;
+    head = C.opening_ja || "";
+    if(phCat==="signature"){ clause = ((p.photo||{}).signature_ja||[])[+phItem||0] || ""; if(!clause) return null; }
+    else { const it = C.items.find(x=>x.key===phItem) || C.items[0]; clause = it.clause_ja || ""; }
+    clause = clause.replace(/。?$/,"。");
+    frame = C.frame_ja || "";
+    tail = (phCat==="signature"?"":J.background+J.lighting) + J.avoid_common;
+  }
+  let pr = head + who + app + clause + frame + tail;
+  if(photoPrefix) pr = photoPrefix.replace(/[\s.。]+$/,"")+"。"+pr;
+  const ar = (phCat==="full_angle"||phCat==="pose") ? "--ar 2:3" : "--ar 3:4";
+  return {prompt: pr+"\n\n"+ar, negative: ""};
+}
 function photoCompose(p){
   // バリエーション合成＝人物ディスクリプタ×場面句（母艦の写真パネルと同じ規則）
+  if(photoLang==="ja") return photoJaCompose(p);
   if(phCat==="id" || !phCat) return photoTexts(p);
   const V = bundle.photo_variations, ph = p.photo;
   if(!V || !ph || !ph.descriptors) return null;
@@ -584,7 +623,7 @@ function openPersona(pi){
       ${pt?`<div class="promptbox">${esc(pt.prompt)}</div>
       <div class="copyrow">
         <button class="copybtn" id="cpP">プロンプトをコピー</button>
-        <button class="copybtn" id="cpN">ネガティブをコピー</button>
+        ${pt.negative?`<button class="copybtn" id="cpN">ネガティブをコピー</button>`:""}
       </div>`:""}</div>`
     : ((p.photo&&p.photo.status)? `<div class="psec"><h3>撮影プロンプト <span class="pbadge ${pst}">${PBD[pst]}</span></h3>
       <div style="font-size:.85rem;color:var(--sub)">プロンプト未変換（母艦の量産機で変換すると次のバンドルに載ります）</div></div>` : "");
@@ -594,7 +633,7 @@ function openPersona(pi){
      ${phSec}
      ${secs}
      ${tl?`<div class="psec" style="margin-top:1.4rem"><h3>登場する卓（${(p.talks||[]).length}）</h3>${tl}</div>`:""}`;
-  if(pt){ wireCopy("cpP","プロンプトをコピー",pt.prompt); wireCopy("cpN","ネガティブをコピー",pt.negative); }
+  if(pt){ wireCopy("cpP","プロンプトをコピー",pt.prompt); if(pt.negative) wireCopy("cpN","ネガティブをコピー",pt.negative); }
   if(hasDesc){
     $("phCatSel").onchange = ()=>{ phCat = $("phCatSel").value; phItem=""; openPersona._last = pi; openPersona(pi); };
     const isel = $("phItemSel");
@@ -781,6 +820,7 @@ function render(){
   sortMode = (await DB.get("sortmode")) || "new";
   pSortMode = (await DB.get("psortmode")) || "talks";
   photoPrefix = (await DB.get("photoprefix")) || "";
+  photoLang = (await DB.get("photolang")) || "ja";
   // 開発用: ?sort=chrono 等で並び順を上書き（保存はしない）
   const sq = new URLSearchParams(location.search).get("sort");
   if(sq && SORT_OPTIONS.talks.some(([v])=>v===sq)) sortMode = sq;
