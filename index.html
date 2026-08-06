@@ -526,13 +526,19 @@ function photoJaCompose(p){
     head = photoPrefix ? J.id_opening.replace("証明写真。","証明写真の構図。") : J.id_opening;
     tail = J.expression_id + J.background + J.lighting + J.avoid_common + J.avoid_id;
   } else {
+    // 継承モード＝一枚目の証明写真を添付して渡す前提（外見の再記述はしない）
     const C = V.categories[phCat]; if(!C) return null;
     head = C.opening_ja || "";
     if(phCat==="signature"){ clause = ((p.photo||{}).signature_ja||[])[+phItem||0] || ""; if(!clause) return null; }
     else { const it = C.items.find(x=>x.key===phItem) || C.items[0]; clause = it.clause_ja || ""; }
     clause = clause.replace(/。?$/,"。");
     frame = C.frame_ja || "";
-    tail = (phCat==="signature"?"":J.background+J.lighting) + J.avoid_common;
+    const ward = (phCat==="signature") ? (J.wardrobe_scene||"") : (J.wardrobe_same||"");
+    let pr2 = head + (J.inherit||"") + clause + frame + ward
+      + (phCat==="signature"?"":J.background+J.lighting) + J.avoid_common;
+    if(photoPrefix) pr2 = photoPrefix.replace(/[\s.。]+$/,"")+"。"+pr2;
+    const ar2 = (phCat==="full_angle"||phCat==="pose") ? "--ar 2:3" : "--ar 3:4";
+    return {prompt: pr2+"\n\n"+ar2, negative: ""};
   }
   let pr = head + who + app + clause + frame + tail;
   if(photoPrefix) pr = photoPrefix.replace(/[\s.。]+$/,"")+"。"+pr;
@@ -553,12 +559,12 @@ function photoCompose(p){
   let clause = "";
   if(phCat==="signature"){ clause = (ph.signature||[])[+phItem||0] || ""; if(!clause) return null; }
   else { const it = C.items.find(x=>x.key===phItem) || C.items[0]; clause = it.clause; }
-  const acc = (d.accessory_descriptor && !/^no accessories/i.test(d.accessory_descriptor))
-    ? d.accessory_descriptor.replace(/[.\s]+$/,"")+". " : "";
+  // 継承モード＝一枚目を参照画像として渡す前提（外見の再記述はしない）
+  const ward = (phCat==="signature") ? (V.en_wardrobe_scene||"") : (V.en_wardrobe_same||"");
   const tail = (phCat==="signature") ? "" : " "+V.background+" "+V.lighting;
   const opening = photoPrefix ? C.opening.replace(/^Realistic\s+/i,"") : C.opening;
-  let pr = (opening.charAt(0).toUpperCase()+opening.slice(1)+" one "+core+". "+clause.replace(/[.\s]+$/,"")+". "
-    + (C.frame?C.frame+" ":"") + acc).replace(/\s+/g," ").trim() + tail;
+  let pr = (opening.charAt(0).toUpperCase()+opening.slice(1)+" "+(V.en_inherit||"")+" "
+    + clause.replace(/[.\s]+$/,"")+". " + (C.frame?C.frame+" ":"") + ward).replace(/\s+/g," ").trim() + tail;
   let ng = (photoPrefix ? "" : V.negative_style+", ") + (V.negative_by_cat[phCat]||"") + ", " + V.negative_common;
   if(photoPrefix) pr = photoPrefix.replace(/[\s.。]+$/,"")+". "+pr;
   const ar = (phCat==="full_angle"||phCat==="pose") ? "--ar 2:3" : "--ar 3:4";
@@ -627,12 +633,21 @@ function openPersona(pi){
       </div>`:""}</div>`
     : ((p.photo&&p.photo.status)? `<div class="psec"><h3>撮影プロンプト <span class="pbadge ${pst}">${PBD[pst]}</span></h3>
       <div style="font-size:.85rem;color:var(--sub)">プロンプト未変換（母艦の量産機で変換すると次のバンドルに載ります）</div></div>` : "");
+  openPersona._cur = pi;
+  const pOrder = pFiltered.length ? pFiltered : (bundle.personas||[]).map((_,i)=>i);
+  const pPos = pOrder.indexOf(pi);
   $("pdetail").innerHTML =
     `<h2 class="pname">${esc(p.name)}</h2>
      <div class="phead">${head}</div>
      ${phSec}
      ${secs}
-     ${tl?`<div class="psec" style="margin-top:1.4rem"><h3>登場する卓（${(p.talks||[]).length}）</h3>${tl}</div>`:""}`;
+     ${tl?`<div class="psec" style="margin-top:1.4rem"><h3>登場する卓（${(p.talks||[]).length}）</h3>${tl}</div>`:""}
+     <div style="display:flex;gap:.6rem;margin:2rem 0 1rem;font-family:sans-serif">
+       <button id="pprevbtn" style="flex:1;padding:.6rem;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);font-size:.9rem;cursor:pointer" ${pPos<=0?"disabled style='opacity:.35'":""}>‹ 前の人物</button>
+       <button id="pnextbtn" style="flex:1;padding:.6rem;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);font-size:.9rem;cursor:pointer" ${pPos>=pOrder.length-1?"disabled style='opacity:.35'":""}>次の人物 ›</button>
+     </div>`;
+  $("pprevbtn").onclick = ()=> navPersona(-1);
+  $("pnextbtn").onclick = ()=> navPersona(1);
   if(pt){ wireCopy("cpP","プロンプトをコピー",pt.prompt); if(pt.negative) wireCopy("cpN","ネガティブをコピー",pt.negative); }
   if(hasDesc){
     $("phCatSel").onchange = ()=>{ phCat = $("phCatSel").value; phItem=""; openPersona._last = pi; openPersona(pi); };
@@ -762,6 +777,31 @@ function openReader(fi){
   scrollTo(0,0);
 }
 $("backbtn").onclick = ()=>{ renderList(); };
+
+/* ---------- 人物の前後めくり（バリエーション選択を保持＝撮影の流れ作業用） ---------- */
+function navPersona(d){
+  const order = pFiltered.length ? pFiltered : (bundle.personas||[]).map((_,i)=>i);
+  const cur = order.indexOf(openPersona._cur);
+  const t = order[cur+d];
+  if(t==null) return;
+  openPersona._last = t;   // phCat/phItemを保持したまま次の人へ
+  openPersona(t);
+}
+let pswX=0, pswY=0, pswOn=false;
+$("pdetail").addEventListener("touchstart", e=>{
+  if(e.touches.length!==1){ pswOn=false; return; }
+  if(e.target.closest("textarea,button,input,select,details,.promptbox")){ pswOn=false; return; }
+  pswX = e.touches[0].clientX; pswY = e.touches[0].clientY;
+  pswOn = pswX > 16 && pswX < innerWidth - 16;
+}, {passive:true});
+$("pdetail").addEventListener("touchend", e=>{
+  if(!pswOn) return; pswOn = false;
+  const dx = e.changedTouches[0].clientX - pswX;
+  const dy = e.changedTouches[0].clientY - pswY;
+  if(Math.abs(dx) > 64 && Math.abs(dx) > Math.abs(dy)*1.8){
+    navPersona(dx < 0 ? 1 : -1);
+  }
+}, {passive:true});
 
 /* ---------- swipe（iPhoneのページ捲り） ---------- */
 let swX=0, swY=0, swOn=false;
