@@ -1,5 +1,5 @@
 /* 卓リーダー service worker — アプリの殻だけをキャッシュ（データはIndexedDBのみ・ネットへ出ない） */
-const CACHE = "taku-reader-v9";
+const CACHE = "taku-reader-v10";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

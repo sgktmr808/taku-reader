@@ -136,6 +136,24 @@ details.memo summary{cursor:pointer; color:var(--sub)}
 #pdetail details.psec[open] summary{color:var(--accent); margin-bottom:.4rem}
 .castlink{cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px}
 
+/* ---- 証明写真（撮影台帳） ---- */
+.pbadge{font-size:.68rem; padding:.1rem .45rem; border-radius:6px; font-family:sans-serif; letter-spacing:.03em}
+.pbadge.done{background:#4a8a5a; color:#fff}
+.pbadge.ready{background:var(--accent); color:var(--bg)}
+.pbadge.none{background:none; border:1px solid var(--line); color:var(--sub)}
+#stylerow{display:flex; gap:.5rem; margin:.5rem 0 .2rem; font-family:sans-serif}
+#stylein{flex:1; min-width:0; padding:.45rem .6rem; font-size:.9rem; border:1px solid var(--line); border-radius:9px;
+  background:var(--card); color:var(--fg); font-family:sans-serif}
+#stylesave{border:none; background:var(--accent); color:var(--bg); border-radius:9px; padding:.45rem .9rem;
+  font-size:.85rem; cursor:pointer; flex-shrink:0}
+.promptbox{font-family:ui-monospace,Menlo,monospace; font-size:.78rem; line-height:1.55; background:var(--chip);
+  border:1px solid var(--line); border-radius:10px; padding:.6rem .7rem; white-space:pre-wrap; word-break:break-word;
+  max-height:14rem; overflow-y:auto; margin:.4rem 0}
+.copyrow{display:flex; gap:.5rem; flex-wrap:wrap; font-family:sans-serif; margin:.4rem 0 .2rem}
+.copybtn{border:1px solid var(--accent); color:var(--accent); background:none; border-radius:9px;
+  padding:.4rem .8rem; font-size:.82rem; cursor:pointer}
+.copybtn.ok{border-color:#4a8a5a; color:#4a8a5a}
+
 footer{
   text-align:center; color:var(--sub); font-size:.72rem; font-family:sans-serif;
   padding:1rem 0 2rem;
@@ -202,7 +220,8 @@ let current = -1;       // index in filtered[] for reader
 let reviews = {};       // {file: {id,title,verdict,memo,updated_at}} 端末内のみ
 let mode = "talks";     // "talks" | "personas"（一覧のタブ）
 let sortMode = "new";   // 卓の並び順（new/old/chrono/chronoDesc/short/wind）端末に記憶
-let pSortMode = "talks";// 人物の並び順（talks=登場卓数/yomi=読み順）
+let pSortMode = "talks";// 人物の並び順（talks=登場卓数/yomi=読み順/photo=撮影待ち順）
+let photoPrefix = "";   // 画風カスタム（全プロンプトの冒頭に反映・端末に記憶）
 let pFiltered = [];     // persona list order (indices into bundle.personas)
 let aliasIndex = {};    // 話者ラベル → personas index（バンドル読込時に構築）
 const pHay = {};        // persona検索用の連結テキスト（遅延メモ化）
@@ -299,7 +318,7 @@ function sortTalks(idx){
 const SORT_OPTIONS = {
   talks: [["new","制作・新しい順"],["old","制作・古い順"],["chrono","作中時間・昔から"],
           ["chronoDesc","作中時間・今から"],["short","短い順"],["wind","今日の風"]],
-  personas: [["talks","登場の多い順"],["yomi","読み（五十音）順"]],
+  personas: [["talks","登場の多い順"],["yomi","読み（五十音）順"],["photo","撮影待ち順（写真データ有無）"]],
 };
 function renderSortSel(){
   const opts = SORT_OPTIONS[mode==="personas"?"personas":"talks"];
@@ -385,13 +404,25 @@ function applyPersonaFilter(){
   });
   if(pSortMode==="yomi")
     pFiltered.sort((a,b)=>(ps[a].yomi||ps[a].name).localeCompare(ps[b].yomi||ps[b].name,"ja"));
-  $("count").textContent = `${pFiltered.length} 人`;
+  else if(pSortMode==="photo"){
+    // 撮影待ち順＝プロンプト有（今すぐ撮れる）→未変換→写真登録済み。同順位は既定順（登場多い順）を保持
+    const rank = p => ({ready:0, none:1, done:2})[(p.photo&&p.photo.status)||"none"];
+    pFiltered.sort((a,b)=> rank(ps[a])-rank(ps[b]));
+  }
+  const stat = {done:0, ready:0, none:0};
+  ps.forEach(p=> stat[(p.photo&&p.photo.status)||"none"]++);
+  const hasPhotoData = stat.ready+stat.done > 0;
+  $("count").textContent = `${pFiltered.length} 人` +
+    (hasPhotoData ? ` ｜ 写真済 ${stat.done} ・ プロンプト有 ${stat.ready} ・ 未変換 ${stat.none}` : "");
+  const PB = {done:"写真済", ready:"プロンプト有", none:"未変換"};
   $("cards").innerHTML = pFiltered.map(i=>{
     const p = bundle.personas[i];
     const one = ((p.sections||[])[0]?.lines[0]||"").slice(0,60);
+    const st = (p.photo&&p.photo.status)||"none";
     return `<div class="card" data-p="${i}">
       <h2>${esc(p.name)}${p.yomi?`<span class="yomi">${esc(p.yomi)}</span>`:""}</h2>
       <div class="pmeta">
+        ${hasPhotoData?`<span class="pbadge ${st}">${PB[st]}</span>`:""}
         ${p.age!==""&&p.age!=null?`<span>${esc(p.age)}歳</span>`:""}
         ${p.gender?`<span>${esc(p.gender)}</span>`:""}
         ${p.occupation?`<span>${esc(p.occupation)}</span>`:""}
@@ -424,7 +455,19 @@ function renderList(){
   renderSortSel();
   if(mode==="personas" && np){
     $("searchbox").placeholder = "名前・読み・職業・プロフィールを検索";
-    $("genres").innerHTML = "";
+    // 画風カスタム（写真データを持つバンドルの時だけ表示）
+    const hasPhoto = (bundle.personas||[]).some(p=>p.photo&&(p.photo.status==="ready"||p.photo.status==="done"));
+    if(hasPhoto){
+      $("genres").innerHTML = `<div id="stylerow">
+        <input id="stylein" placeholder="画風カスタム（全プロンプトの冒頭に反映）" value="${esc(photoPrefix)}">
+        <button id="stylesave">保存</button></div>`;
+      $("stylesave").onclick = async ()=>{
+        photoPrefix = $("stylein").value.trim();
+        await DB.set("photoprefix", photoPrefix);
+        $("stylesave").textContent = "✓";
+        setTimeout(()=> $("stylesave").textContent="保存", 1200);
+      };
+    } else $("genres").innerHTML = "";
     applyPersonaFilter();
   } else {
     mode = "talks";
@@ -443,6 +486,25 @@ $("searchbox") && ($("searchbox").oninput = ()=> mode==="personas" ? applyPerson
 
 /* ---------- persona detail ---------- */
 const OPEN_SECTIONS = 4;  // 先頭からこの数だけ開いて表示・残りは折りたたみ
+const STYLE_CONFLICT = ["illustration","anime","painting","cartoon","3d render","cgi look"];
+function photoTexts(p){
+  // 画風カスタムを冒頭へ。カスタム時は写実強制と喧嘩するネガ語を自動で外す
+  if(!p.photo || !p.photo.prompt) return null;
+  let pr = p.photo.prompt, ng = p.photo.negative || "";
+  if(photoPrefix){
+    pr = photoPrefix.replace(/[\s.。]+$/,"") + ". " + pr;
+    ng = ng.split(", ").filter(t=> !STYLE_CONFLICT.includes(t)).join(", ");
+  }
+  return {prompt: pr + "\n\n" + (p.photo.params||""), negative: ng};
+}
+function wireCopy(id, label, text){
+  const b = $(id); if(!b) return;
+  b.onclick = async ()=>{
+    try{ await navigator.clipboard.writeText(text); b.textContent="✓ コピーした"; b.classList.add("ok"); }
+    catch(e){ window.prompt("この端末ではコピーできません。長押しで選択を:", text); }
+    setTimeout(()=>{ b.textContent = label; b.classList.remove("ok"); }, 1500);
+  };
+}
 function openPersona(pi){
   const p = (bundle.personas||[])[pi]; if(!p) return;
   mode = "personas";
@@ -470,11 +532,24 @@ function openPersona(pi){
       <div class="meta"><span>${esc((t.cast||[]).join("・"))}</span>${t.id?`<span>${esc(t.id)}</span>`:""}${t.date?`<span>${esc(t.date)}</span>`:""}</div>
     </div>`;
   }).join("");
+  const pt = photoTexts(p);
+  const pst = (p.photo&&p.photo.status)||"none";
+  const PBD = {done:"写真済", ready:"プロンプト有", none:"未変換"};
+  const phSec = pt ? `<div class="psec"><h3>証明写真プロンプト${photoPrefix?"（画風カスタム反映中）":""} <span class="pbadge ${pst}">${PBD[pst]}</span></h3>
+      <div class="promptbox">${esc(pt.prompt)}</div>
+      <div class="copyrow">
+        <button class="copybtn" id="cpP">プロンプトをコピー</button>
+        <button class="copybtn" id="cpN">ネガティブをコピー</button>
+      </div></div>`
+    : ((p.photo&&p.photo.status)? `<div class="psec"><h3>証明写真プロンプト <span class="pbadge ${pst}">${PBD[pst]}</span></h3>
+      <div style="font-size:.85rem;color:var(--sub)">プロンプト未変換（母艦の量産機で変換すると次のバンドルに載ります）</div></div>` : "");
   $("pdetail").innerHTML =
     `<h2 class="pname">${esc(p.name)}</h2>
      <div class="phead">${head}</div>
+     ${phSec}
      ${secs}
      ${tl?`<div class="psec" style="margin-top:1.4rem"><h3>登場する卓（${(p.talks||[]).length}）</h3>${tl}</div>`:""}`;
+  if(pt){ wireCopy("cpP","プロンプトをコピー",pt.prompt); wireCopy("cpN","ネガティブをコピー",pt.negative); }
   document.querySelectorAll("#pdetail .card").forEach(el=>{
     el.onclick = ()=>{
       mode = "talks"; genreSel = ""; $("searchbox").value = "";
@@ -655,6 +730,7 @@ function render(){
   reviews = (await DB.get("reviews")) || {};
   sortMode = (await DB.get("sortmode")) || "new";
   pSortMode = (await DB.get("psortmode")) || "talks";
+  photoPrefix = (await DB.get("photoprefix")) || "";
   // 開発用: ?sort=chrono 等で並び順を上書き（保存はしない）
   const sq = new URLSearchParams(location.search).get("sort");
   if(sq && SORT_OPTIONS.talks.some(([v])=>v===sq)) sortMode = sq;
