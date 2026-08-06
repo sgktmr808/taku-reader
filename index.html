@@ -497,6 +497,30 @@ function photoTexts(p){
   }
   return {prompt: pr + "\n\n" + (p.photo.params||""), negative: ng};
 }
+let phCat = "id", phItem = "";   // 人物詳細のバリエーション選択（開くたびに基本形へ戻す）
+function photoCompose(p){
+  // バリエーション合成＝人物ディスクリプタ×場面句（母艦の写真パネルと同じ規則）
+  if(phCat==="id" || !phCat) return photoTexts(p);
+  const V = bundle.photo_variations, ph = p.photo;
+  if(!V || !ph || !ph.descriptors) return null;
+  const C = V.categories[phCat]; if(!C) return null;
+  const d = ph.descriptors;
+  const core = [d.age_descriptor,d.gender_descriptor].filter(Boolean).join(" ") + ", "
+    + [d.build_descriptor,d.face_shape_descriptor,d.eye_descriptor,d.skin_descriptor,d.hair_descriptor]
+      .filter(Boolean).join(", ");
+  let clause = "";
+  if(phCat==="signature"){ clause = (ph.signature||[])[+phItem||0] || ""; if(!clause) return null; }
+  else { const it = C.items.find(x=>x.key===phItem) || C.items[0]; clause = it.clause; }
+  const acc = (d.accessory_descriptor && !/^no accessories/i.test(d.accessory_descriptor))
+    ? d.accessory_descriptor.replace(/[.\s]+$/,"")+". " : "";
+  const tail = (phCat==="signature") ? "" : " "+V.background+" "+V.lighting;
+  let pr = (C.opening+" one "+core+". "+clause.replace(/[.\s]+$/,"")+". "
+    + (C.frame?C.frame+" ":"") + acc).replace(/\s+/g," ").trim() + tail;
+  let ng = (photoPrefix ? "" : V.negative_style+", ") + (V.negative_by_cat[phCat]||"") + ", " + V.negative_common;
+  if(photoPrefix) pr = photoPrefix.replace(/[\s.。]+$/,"")+". "+pr;
+  const ar = (phCat==="full_angle"||phCat==="pose") ? "--ar 2:3" : "--ar 3:4";
+  return {prompt: pr+"\n\n"+ar, negative: ng};
+}
 function wireCopy(id, label, text){
   const b = $(id); if(!b) return;
   b.onclick = async ()=>{
@@ -532,16 +556,33 @@ function openPersona(pi){
       <div class="meta"><span>${esc((t.cast||[]).join("・"))}</span>${t.id?`<span>${esc(t.id)}</span>`:""}${t.date?`<span>${esc(t.date)}</span>`:""}</div>
     </div>`;
   }).join("");
-  const pt = photoTexts(p);
+  if(openPersona._last !== pi){ phCat="id"; phItem=""; openPersona._last = pi; }
+  const V = bundle.photo_variations;
+  const hasDesc = p.photo && p.photo.descriptors && V;
+  let selHtml = "";
+  if(hasDesc){
+    const cats = [["id","証明写真（基本）"]].concat(Object.entries(V.categories)
+      .filter(([k])=> k!=="signature" || (p.photo.signature||[]).length)
+      .map(([k,c])=>[k,c.label]));
+    selHtml = `<div class="copyrow"><select id="phCatSel" style="padding:.35rem .5rem;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg);font-family:sans-serif">`
+      + cats.map(([k,l])=>`<option value="${k}"${phCat===k?" selected":""}>${esc(l)}</option>`).join("")
+      + `</select><select id="phItemSel" style="padding:.35rem .5rem;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg);font-family:sans-serif${phCat==="id"?";display:none":""}">`
+      + (phCat==="signature"
+          ? (p.photo.signature||[]).map((s,i)=>`<option value="${i}"${String(phItem)===String(i)?" selected":""}>特徴${i+1}</option>`).join("")
+          : (phCat!=="id" ? V.categories[phCat].items.map(it=>`<option value="${it.key}"${phItem===it.key?" selected":""}>${esc(it.label)}</option>`).join("") : ""))
+      + `</select></div>`;
+  }
+  const pt = photoCompose(p);
   const pst = (p.photo&&p.photo.status)||"none";
   const PBD = {done:"写真済", ready:"プロンプト有", none:"未変換"};
-  const phSec = pt ? `<div class="psec"><h3>証明写真プロンプト${photoPrefix?"（画風カスタム反映中）":""} <span class="pbadge ${pst}">${PBD[pst]}</span></h3>
-      <div class="promptbox">${esc(pt.prompt)}</div>
+  const phSec = (pt||hasDesc) ? `<div class="psec"><h3>撮影プロンプト${photoPrefix?"（画風カスタム反映中）":""} <span class="pbadge ${pst}">${PBD[pst]}</span></h3>
+      ${selHtml}
+      ${pt?`<div class="promptbox">${esc(pt.prompt)}</div>
       <div class="copyrow">
         <button class="copybtn" id="cpP">プロンプトをコピー</button>
         <button class="copybtn" id="cpN">ネガティブをコピー</button>
-      </div></div>`
-    : ((p.photo&&p.photo.status)? `<div class="psec"><h3>証明写真プロンプト <span class="pbadge ${pst}">${PBD[pst]}</span></h3>
+      </div>`:""}</div>`
+    : ((p.photo&&p.photo.status)? `<div class="psec"><h3>撮影プロンプト <span class="pbadge ${pst}">${PBD[pst]}</span></h3>
       <div style="font-size:.85rem;color:var(--sub)">プロンプト未変換（母艦の量産機で変換すると次のバンドルに載ります）</div></div>` : "");
   $("pdetail").innerHTML =
     `<h2 class="pname">${esc(p.name)}</h2>
@@ -550,6 +591,11 @@ function openPersona(pi){
      ${secs}
      ${tl?`<div class="psec" style="margin-top:1.4rem"><h3>登場する卓（${(p.talks||[]).length}）</h3>${tl}</div>`:""}`;
   if(pt){ wireCopy("cpP","プロンプトをコピー",pt.prompt); wireCopy("cpN","ネガティブをコピー",pt.negative); }
+  if(hasDesc){
+    $("phCatSel").onchange = ()=>{ phCat = $("phCatSel").value; phItem=""; openPersona._last = pi; openPersona(pi); };
+    const isel = $("phItemSel");
+    if(isel) isel.onchange = ()=>{ phItem = isel.value; openPersona._last = pi; openPersona(pi); };
+  }
   document.querySelectorAll("#pdetail .card").forEach(el=>{
     el.onclick = ()=>{
       mode = "talks"; genreSel = ""; $("searchbox").value = "";
