@@ -490,12 +490,15 @@ const STYLE_CONFLICT = ["illustration","anime","painting","cartoon","3d render",
 function photoTexts(p){
   // 画風カスタムを冒頭へ。カスタム時は写実強制と喧嘩するネガ語を自動で外す
   if(!p.photo || !p.photo.prompt) return null;
-  let pr = p.photo.prompt, ng = p.photo.negative || "";
+  let pr = p.photo.prompt, ng = p.photo.negative || "", params = p.photo.params || "";
   if(photoPrefix){
+    // 画風カスタム時＝写実の根を全部抜く（冒頭Realistic/photograph・--style行・写実系ネガ語）
+    pr = pr.replace(/^Realistic\s+/i,"").replace("ID portrait photograph","ID portrait");
+    params = params.split("\n").filter(l=>!l.startsWith("--style")).join("\n");
     pr = photoPrefix.replace(/[\s.。]+$/,"") + ". " + pr;
     ng = ng.split(", ").filter(t=> !STYLE_CONFLICT.includes(t)).join(", ");
   }
-  return {prompt: pr + "\n\n" + (p.photo.params||""), negative: ng};
+  return {prompt: pr + "\n\n" + params, negative: ng};
 }
 let phCat = "id", phItem = "";   // 人物詳細のバリエーション選択（開くたびに基本形へ戻す）
 function photoCompose(p){
@@ -514,7 +517,8 @@ function photoCompose(p){
   const acc = (d.accessory_descriptor && !/^no accessories/i.test(d.accessory_descriptor))
     ? d.accessory_descriptor.replace(/[.\s]+$/,"")+". " : "";
   const tail = (phCat==="signature") ? "" : " "+V.background+" "+V.lighting;
-  let pr = (C.opening+" one "+core+". "+clause.replace(/[.\s]+$/,"")+". "
+  const opening = photoPrefix ? C.opening.replace(/^Realistic\s+/i,"") : C.opening;
+  let pr = (opening.charAt(0).toUpperCase()+opening.slice(1)+" one "+core+". "+clause.replace(/[.\s]+$/,"")+". "
     + (C.frame?C.frame+" ":"") + acc).replace(/\s+/g," ").trim() + tail;
   let ng = (photoPrefix ? "" : V.negative_style+", ") + (V.negative_by_cat[phCat]||"") + ", " + V.negative_common;
   if(photoPrefix) pr = photoPrefix.replace(/[\s.。]+$/,"")+". "+pr;
