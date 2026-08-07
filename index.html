@@ -520,7 +520,9 @@ function photoJaCompose(p){
   const app = jaSectionLines(p,"外見").map(x=>String(x).replace(/。?\s*$/,"。")).join("");
   if(!app) return null;
   const gender = p.gender==="女"?"女性":(p.gender==="男"?"男性":"人物");
-  const who = (p.age!==""&&p.age!=null ? p.age+"歳の" : "")+gender+"。";
+  const bp = p.birthplace||"";
+  const origin = (bp && !/[都道府県]$/.test(bp) && bp.indexOf("北海道")!==0) ? bp.split("・")[0]+"出身の" : "";
+  const who = origin+(p.age!==""&&p.age!=null ? p.age+"歳の" : "")+gender+"。";
   let head, clause="", frame="", tail;
   if(phCat==="id" || !phCat){
     head = photoPrefix ? J.id_opening.replace("証明写真。","証明写真の構図。") : J.id_opening;
